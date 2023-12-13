@@ -91,7 +91,7 @@ EOF
 
 function checkReadyTenantCR(){
   local _name=$1
-  kubectl -n "${NS}" get tenant "$_name" -o yaml | yq '.status.conditions[?(@.type=="Ready")].status' || echo "false"
+  kubectl -n "${NS}" get tenant "$_name" -o yaml | yq '.status.conditions | map(select(.type == "Ready")) | .[0].status' || echo "False"
 }
 
 function usage() {
@@ -130,7 +130,7 @@ echo "> SKIP_WAIT:          $SKIP_WAIT"
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
 echo " "
-checkBin curl
+#checkBin curl
 checkBin yq
 checkBin kubectl
 
@@ -153,6 +153,8 @@ echo " "
 echo "I have been found ${#INGRESSES[@]} ingresses to convert in tenant CR"
 for INGRESS_NAME in "${INGRESSES[@]}"
 do
+  TENANT_NAME=""
+  TENANT_ID=""
   echo " "   
   echo "==========================================="
   echo "ingress name: $INGRESS_NAME"
@@ -161,16 +163,16 @@ do
   echo "TENANT_NAME:'$TENANT_NAME' TENANT_ID:'$TENANT_ID'"
 
   TENANT_CR="$(createTenantCR "$INGRESS_NAME")"
-  echo "$TENANT_CR" | kubectlss apply -n "${NS}" -f - || echo "error tenant CR apply" && exit 1;
-  echo "$TENANT_CR"
+  echo "$TENANT_CR" | kubectl apply -n "${NS}" -f - || echo "error tenant CR apply"
+  #echo "$TENANT_CR"
   if [[ $SKIP_WAIT == "false"  ]]; then
-    IS_READY="false"
-    while [ "$IS_READY" == "false" ]
+    IS_READY="False"
+    while [ "$IS_READY" == "False" ]
     do
       sleep 10
       IS_READY=$(checkReadyTenantCR "$INGRESS_NAME")     
       echo "check for Tenant CR $INGRESS_NAME ready: $IS_READY"
     done
-    echo "Tenant CR $INGRESS_NAME ready|"
+    echo "Tenant CR $INGRESS_NAME ready!"
   fi
 done
