@@ -166,7 +166,7 @@ do
   echo "$TENANT_CR" | kubectl apply -n "${NS}" -f - || echo "error tenant CR apply"
   #echo "$TENANT_CR"
   if [[ $SKIP_WAIT == "false"  ]]; then
-    IS_READY="False"
+    IS_READY=$(checkReadyTenantCR "$INGRESS_NAME")
     while [ "$IS_READY" == "False" ]
     do
       sleep 10
