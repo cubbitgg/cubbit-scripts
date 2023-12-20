@@ -1,5 +1,5 @@
 #!/bin/bash
-NS=efesto-operator-system
+NS=${NS:-cubbit}
 
 for ingress in $(kubectl -n ${NS} get ingress -o name  --no-headers); do
     #echo ${ingress##*/}
