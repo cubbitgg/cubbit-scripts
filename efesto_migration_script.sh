@@ -99,6 +99,7 @@ function usage() {
     echo "  --ns <namespace name>                           : Default <cubbit>               ; Use namespace for all k8s resources to retrieve and create"
     echo "  --domain <domain>                               : Default <cubbit.eu>            ; Use domain to extract tenant value from ingress name"
     echo "  --skip-ingresses <ingress-name1,ingress-name2>  : Default <empty>                ; Use ingress names (comma separated) to exclude from migration"
+    echo "  --allow-ingresses <ingress-name1,ingress-name2> : Default all                    ; Use ingress names (comma separated) as list for migration"
     echo "  --skip-wait                                     : Default wait enabled           ; Use to skip to wait for tenant CR ready condition"
     echo "  --help                                          : print this help"
 }
@@ -109,6 +110,7 @@ while [ "$#" -gt 0 ]; do
     "--ns") NS_OVERRIDE="$2";shift;;
     "--domain") ROOT_DOMAIN_OVERRIDE="$2";shift;;
     "--skip-ingresses") SKIP_INGRESSES_OVERRIDE="$2";shift;;
+    "--allow-ingresses") ALLOW_INGRESSES_OVERRIDE="$2";shift;;
     "--skip-wait") SKIP_WAIT_OVERRIDE="true";;
     "--help") usage; exit 3;;
     "--"*) echo "Undefined argument \"$1\"" 1>&2; usage; exit 3;;
@@ -119,6 +121,7 @@ done
 NS="${NS_OVERRIDE:-cubbit}"
 ROOT_DOMAIN="${ROOT_DOMAIN_OVERRIDE:-cubbit.eu}"
 SKIP_INGRESSES="${SKIP_INGRESSES_OVERRIDE:-}"
+ALLOW_INGRESSES="${ALLOW_INGRESSES_OVERRIDE:-}"
 SKIP_WAIT=${SKIP_WAIT_OVERRIDE:-false}
 
 
@@ -126,6 +129,7 @@ echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 echo "> NS:                 $NS"
 echo "> ROOT_DOMAIN:        $ROOT_DOMAIN"
 echo "> SKIP_INGRESSES:     $SKIP_INGRESSES"
+echo "> ALLOWP_INGRESSES:   ${ALLOW_INGRESSES:-all}"
 echo "> SKIP_WAIT:          $SKIP_WAIT"
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
@@ -137,20 +141,47 @@ checkBin kubectl
 
 echo " "
 INGRESSES=()
-for ingress in $(kubectl -n $NS get ingress --no-headers -o name); do
-    # echo "eval ingress ${ingress} ${ingress##*/}"
-    INGRESS_NAME=${ingress##*/}
-    _skip=$(checkSkipIngress "$INGRESS_NAME" "$SKIP_INGRESSES")
-    if [[ $_skip -eq 0 ]] && [[ $INGRESS_NAME == *"$ROOT_DOMAIN" ]]
+if [[ -z "$ALLOW_INGRESSES" ]]; then
+  echo "fetch ingress names with query"
+  for ingress in $(kubectl -n $NS get ingress --no-headers -o name); do
+      # echo "eval ingress ${ingress} ${ingress##*/}"
+      INGRESS_NAME=${ingress##*/}
+      _skip=$(checkSkipIngress "$INGRESS_NAME" "$SKIP_INGRESSES")
+      if [[ $_skip -eq 0 ]] && [[ $INGRESS_NAME == *"$ROOT_DOMAIN" ]]
+      then
+        INGRESSES+=("$INGRESS_NAME")
+      else
+        echo "skip $INGRESS_NAME"
+      fi
+  done
+else
+  for _ingress in $(echo "$ALLOW_INGRESSES" | tr "," "\n");
+  do
+    _skip=$(checkSkipIngress "$_ingress" "$SKIP_INGRESSES")
+    if [[ $_skip -eq 0 ]] && [[ $_ingress == *"$ROOT_DOMAIN" ]]
     then
-      INGRESSES+=("$INGRESS_NAME")
+      echo "add allow ingress $_ingress"
+      INGRESSES+=("$_ingress")
     else
-      echo "skip $INGRESS_NAME"
+      echo "skip $_ingress"
     fi
-done
+  done
+fi
 
 echo " "
 echo "I have been found ${#INGRESSES[@]} ingresses to convert in tenant CR"
+read -p "Do you wish to continue migration ? [y/N]: " ANSWER
+case "$ANSWER" in
+    [Yy])
+      echo "proceding ..."
+      ;;
+    *)
+      echo "exit ..."
+      exit 0
+      ;;
+esac
+
+
 for INGRESS_NAME in "${INGRESSES[@]}"
 do
   TENANT_NAME=""
